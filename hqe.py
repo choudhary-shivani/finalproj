@@ -26,7 +26,7 @@ class HQE(object):
         print(f'Loaded HQE module.')
         print(f'use_orig_for_query: {self.use_orig_for_query}')
 
-    def expand_query(self, utterances):
+    def expand_queries(self, utterances):
         """
         :param utterances: [str] list of utterances
         :return expanded_queries: [str] an expanded query set
