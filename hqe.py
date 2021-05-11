@@ -29,9 +29,9 @@ class HQE(object):
     def expand_queries(self, utterances):
         """
         :param utterances: [str] list of utterances
-        :return expanded_queries: [str] an expanded query set
+        :return expanded_sets: [str] an expanded query set
         """
-        expanded_queries = []
+        expanded_sets = []
         proc_uttrs = [preprocess_utterance(ctx, remove_stopwords=True) for ctx in utterances]
 
         # Seperate expansion tokens at Query and Session Level. Does not make a difference if we use same thresholds.
@@ -62,7 +62,7 @@ class HQE(object):
             # Now perform query expansion. Note that we donot expand first query.
             if uid == 0:
                 W_Q[uid % self.last_k] = q_set
-                expanded_queries.append(utterances[uid])
+                expanded_sets.append(set())
                 continue
 
             # We are using original query here. Note that this makes sense only when we are using manual runs
@@ -88,11 +88,7 @@ class HQE(object):
                 query_set = set().union(*W_Q)
                 extension_set = extension_set.union(query_set)
 
-            extensions = " ".join(extension_set)
-            expanded_queries.append(
-                utterances[uid] + ' ' + extensions
-            )
-
+            expanded_sets.append(extension_set)
             W_Q[uid % self.last_k] = q_set
 
-        return expanded_queries
+        return expanded_sets

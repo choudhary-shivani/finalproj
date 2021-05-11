@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from collections import Counter, defaultdict
 
+import spacy
+
 from tf_idf_vectorizer import text_processor as idf_processor
 from utils import preprocess_utterance as preprocess_utterance
 
@@ -25,13 +27,25 @@ class PQE(object):
         self.idf = idf
         self.top_k_documents = top_k_documents
         self.top_k_tokens = top_k_tokens
+        
+        self.nlp = spacy.load("en_core_web_sm")
+        self.ignore_pronoun_list = [
+            'i', 'me', 'my', 'myself', 'you', 'your',
+            # 'why', 'who', 'when', 'where'
+        ]
 
     def classify_utterance(self, utterance):
         """
         :param utterance: str
         :return: True if utterance to be expanded else False
         """
-        return True
+        doc = self.nlp(utterance)
+        res = any([
+            (x.text not in self.ignore_pronoun_list) and (x.pos_ == 'PRON')
+            for x in doc
+        ])
+
+        return res
 
     def get_topk_token(self, documents):
         scores = defaultdict(lambda : -1.0)
@@ -74,7 +88,7 @@ class PQE(object):
         # 2. Get TF-IDF query expansion
         extension_set = self.get_topk_token(documents)
 
-        return utterance + " " + " ".join(extension_set)
+        return extension_set
 
     def expand_queries(self, utterances):
         return [

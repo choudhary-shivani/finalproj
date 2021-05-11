@@ -68,15 +68,21 @@ class Pipeline(object):
             components.append(pqe)
 
         self.expansion_pipeline = components
+        print('Pipeline load completed.')
         
     def query_expansion(self, utterances):
         if len(self.expansion_pipeline) == 0:
             return utterances
 
+        expanded_queries = utterances
         for module in self.expansion_pipeline:
-            utterances = module.expand_queries(utterances)
+            extension_sets = module.expand_queries(expanded_queries)
+            expanded_queries = [
+                utterances[idx] + " " + " ".join(extension_sets[idx])
+                for idx in range(len(utterances))
+            ]
 
-        return utterances
+        return expanded_queries
 
     def query_execution(self, utterances):
         results = []
