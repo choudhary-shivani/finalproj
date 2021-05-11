@@ -1,4 +1,4 @@
-import string
+import string, json
 
 import nltk
 from nltk.corpus import stopwords
@@ -19,3 +19,16 @@ def preprocess_utterance(utterance, remove_stopwords=False):
         )
 
     return ret
+
+
+def read_topics_as_utterances(fname):
+    with open(fname, 'r') as fp:
+        data = json.load(fp)
+
+    utterances = []
+    for dial in data:
+        utterances.append(
+            [x['raw_utterance'] for x in dial['turn']]
+        )
+
+    return utterances

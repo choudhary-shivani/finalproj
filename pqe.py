@@ -8,22 +8,23 @@
 import gc, joblib
 import numpy as np
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
+from collections import Counter, defaultdict
 
+from tf_idf_vectorizer import text_processor as idf_processor
 from utils import preprocess_utterance as preprocess_utterance
 
 
 class PQE(object):
-    def __init__(self, ir_engine, vectorizer, top_k):
+    def __init__(self, ir_engine, idf, top_k_documents, top_k_tokens):
         """
         :param ir_engine: PySerini Backend Engine over CAST documents.
-        :param vectorizer: TfidfVectorizer vectorizer
+        :param idf: Token Inverse document frequency
         :param cfg: dict Configuration for cfg.
         """
         self.backend_engine = ir_engine
-        self.vectorizer = vectorizer
-        self.top_k = top_k
-        self.feature_names = self.vectorizer.get_feature_names()
+        self.idf = idf
+        self.top_k_documents = top_k_documents
+        self.top_k_tokens = top_k_tokens
 
     def classify_utterance(self, utterance):
         """
@@ -31,6 +32,24 @@ class PQE(object):
         :return: True if utterance to be expanded else False
         """
         return True
+
+    def get_topk_token(self, documents):
+        scores = defaultdict(lambda : -1.0)
+
+        for doc in documents:
+            tokens = idf_processor(doc).split()
+            tf = Counter(tokens)
+
+            for tok in tf:
+                score = tf[tok] * self.idf.get(tok, 0)
+                if score > scores[tok]:
+                    scores[tok] = score
+
+        sorted_items = sorted(
+            scores.items(), key=lambda x: x[1], reverse=True
+        )[:self.top_k_tokens]
+
+        return set([x[0] for x in sorted_items])
 
     def expand_query(self, utterance):
         """
@@ -41,10 +60,10 @@ class PQE(object):
             return utterance
 
         # 1. Get top-k documents
-        results = self.backend_engine(utterance, k=self.top_k)
+        results = self.backend_engine.search(utterance, k=self.top_k_documents)
 
-        if len(results) < self.top_k:
-            print(f'Number of results {len(results)} are less than top-k {self.top_k}.')
+        if len(results) < self.top_k_documents:
+            print(f'Number of results {len(results)} are less than top-k {self.top_k_documents}.')
             print(f'Query: {utterance}')
 
         if len(results) == 0:
@@ -53,43 +72,11 @@ class PQE(object):
         documents = [res.raw for res in results]
 
         # 2. Get TF-IDF query expansion
-        tfidf_scores = self.vectorizer.transform(documents)  # doc_num x vocabsize
-        sort_idxs = np.argsort(tfidf_scores.data)[::-1][:self.top_k]
-        vocab_idxs = tfidf_scores.indices[sort_idxs]
-        extension_set = set([self.feature_names[idx] for idx in vocab_idxs])
+        extension_set = self.get_topk_token(documents)
 
         return utterance + " " + " ".join(extension_set)
-        
 
-def dump_tf_idf_msmarco(fname, dest):
-    print(f'Preparing TF IDF featurizer for MSMARCO')
-    print(f'Reading data from {fname}')
-    df = pd.read_csv(
-        fname, header=None,
-        names=['did', 'document'], sep='\t',
-    )
-    print(f'Number of rows: {df.shape[0]}')
-
-    df.drop_duplicates(subset=['did', 'document'], inplace=True)
-    print(f'Number of rows after deduplication: {df.shape[0]}')
-
-    documents = df.document.tolist()
-    del df
-    gc.collect()
-
-    print(documents[:10])
-    vectorizer = TfidfVectorizer(
-        stop_words='english',
-        preprocessor=preprocess_utterance,
-        strip_accents='ascii', lowercase=True,
-    ).fit(documents)
-    vectorizer.fit(documents)
-
-    joblib.dump(vectorizer, dest)
-
-
-if __name__ == '__main__':
-    dest = '/mnt/workdrive/Study/CAST/msmarco/msmarco_tfidf.pkl'
-    fname = '/mnt/workdrive/Study/CAST/msmarco/collection.tsv'
-
-    dump_tf_idf_msmarco(fname, dest)
+    def expand_queries(self, utterances):
+        return [
+            self.expand_query(uttr) for uttr in utterances
+        ]
