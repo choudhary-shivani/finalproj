@@ -1,6 +1,8 @@
+import os
 import string, json
 
 import nltk
+from multiprocessing import Pool
 from nltk.corpus import stopwords
 stop_words = stopwords.words('english')
 stop_words.append('would')
@@ -32,3 +34,7 @@ def read_topics_as_utterances(fname):
         )
 
     return utterances
+
+
+def get_pool():
+    return Pool(os.cpu_count()-1)

@@ -12,7 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 stop_words = stopwords.words('english')
 stop_words.append('would')
 
-from trec_car import read_data
+# from trec_car import read_data
 
 
 def text_processor(text):
