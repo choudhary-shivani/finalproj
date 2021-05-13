@@ -24,7 +24,7 @@ evaluation_topics = './treccastweb/2019/data/evaluation/evaluation_topics_v1' \
 
 config = {
     'cardinality': 10,
-    'verbose': False,
+    'verbose': True,
     'hqe': {
         'qt_thresh': 4,
         'st_thresh': 3,
@@ -128,7 +128,7 @@ class Pipeline(object):
         results = []
 
         for query in utterances:
-            hits = self.backend_engine.search(query)
+            hits = self.backend_engine.search(query, k=20)
             results.append(
                 [hit.docid for hit in hits]
             )
@@ -149,6 +149,17 @@ class Pipeline(object):
 
 if __name__ == '__main__':
     pipeline = Pipeline(config)
-    train_utterances = read_topics_as_utterances(training_topics)[:1]
-    res, rerank = pipeline.execute(train_utterances[0])
-    print("Non-reranked {}\nReranked output {}".format(res, rerank))
+    train_utterances = read_topics_as_utterances(training_topics)
+    for idx, utter in enumerate(train_utterances[:2]):
+        res, rerank = pipeline.execute(utter)
+        # write the result in the final file
+        # First write the output of the PQE and HQE
+        number = str(idx+1)
+        with open('run.txt', 'w') as f:
+            for idx, rec in enumerate(res):
+                for idx_, i in enumerate(rec):
+                    f.write(
+                        "{} {} {} {} {} {}\n".format(number + '_' + str(idx + 1),
+                                                     'Q0', i, idx_ + 1, 10,
+                                                     'Automatic_run'))
+        # print("Non-reranked {}\nReranked output {}".format(res, rerank))

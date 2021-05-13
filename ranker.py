@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-torch.set_num_threads(os.cpu_count()-1)
+torch.set_num_threads(os.cpu_count())
 
 class rerank:
     def __init__(self, ir_engine, passage_max_len, query_max_len, tokenizer,
@@ -26,9 +26,10 @@ class rerank:
 
         # Check the limitation on query and passage
         if len(q_tok) > self.query_max_len:
-            q_tok = q_tok[0] + q_tok[1: self.query_max_len-1] + q_tok[1]
-        if len(q_tok) > self.passage_max_len:
-            p_tok = q_tok[0] + p_tok[1: self.passage_max_len-1] + p_tok[1]
+            q_tok = [q_tok[0]] + q_tok[1: self.query_max_len-2] + \
+                    [q_tok[-1]]
+        if len(p_tok) > self.passage_max_len:
+            p_tok = p_tok[:self.passage_max_len-1] + [p_tok[-1]]
 
         s_p_id = [1] * len(p_tok)
         s_q_id = [0] * len(q_tok)
@@ -40,20 +41,23 @@ class rerank:
             pad = ['[PAD]'] * (512 - len(q_tok + p_tok))
             pad_tok = self.tokenizer.convert_tokens_to_ids(pad)
             seq_pad = [1] * (512 - len(q_tok + p_tok))
+            # print(q_tok + p_tok + pad_tok)
             t_q_tok = torch.tensor(q_tok + p_tok + pad_tok)
             seq_id_final = torch.tensor(s_q_id + s_p_id + seq_pad)
             return t_q_tok, seq_id_final
 
-        t_q_tok = torch.tensor([q_tok + p_tok])
-        seq_id_final = torch.tensor([s_q_id + s_p_id])
+        t_q_tok = torch.tensor(q_tok + p_tok)
+        seq_id_final = torch.tensor(s_q_id + s_p_id)
         return [t_q_tok, seq_id_final]
 
     def rerank(self, query, doc_list):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         assert isinstance(doc_list, list)  #  expects doc list as input
         self.query = query
         self.list_of_files = doc_list
         seq = []
         tok_id = []
+        self.model = self.model.to(device)
 
         for i in self.list_of_files:
             f_list = self._query_passage_rerank(i)
@@ -61,12 +65,13 @@ class rerank:
             seq.append(f_list[1])
 
         with torch.no_grad():
-            score = self.model(torch.stack(tok_id, dim=0), torch.stack(seq,
-                                                                     dim=0))
-            
+            score = self.model(torch.stack(tok_id, dim=0).to(device),
+                               torch.stack(seq,dim=0).to(device))
+
         # Sort the array based on the classfication score and collecting the
         # index so that we can rerank
-        y = np.argsort(score.logits.detach().numpy().ravel()[::2])
+        nt = score.logits.cpu()
+        y = np.argsort(nt.detach().numpy().ravel()[::2])
         if self.verbose:
             print("New sequence is {}".format(np.array(self.list_of_files)[y]))
         return list(np.array(self.list_of_files)[y])
