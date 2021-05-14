@@ -13,6 +13,9 @@ from collections import Counter, defaultdict
 import spacy
 
 from tf_idf_vectorizer import text_processor as idf_processor
+from nltk.stem import WordNetLemmatizer
+
+lemmatizer = WordNetLemmatizer()
 from utils import preprocess_utterance as preprocess_utterance
 
 
@@ -52,17 +55,19 @@ class PQE(object):
 
         for doc in documents:
             tokens = idf_processor(doc).split()
+            tokens = [lemmatizer.lemmatize(i) for i in tokens]
             tf = Counter(tokens)
 
             for tok in tf:
-                score = tf[tok] * self.idf.get(tok, 0)
-                if score > scores[tok]:
-                    scores[tok] = score
+                if len(tok) > 2 and all([i.isalpha() for i in tok]):
+                    score = tf[tok] * self.idf.get(tok, 0)
+                    if score > scores[tok]:
+                        scores[tok] = score
 
         sorted_items = sorted(
             scores.items(), key=lambda x: x[1], reverse=True
         )[:self.top_k_tokens]
-
+        print(sorted_items)
         return set([x[0] for x in sorted_items])
 
     def expand_query(self, utterance):

@@ -1,7 +1,9 @@
 import os
 import torch
 import numpy as np
+
 torch.set_num_threads(os.cpu_count())
+
 
 class rerank:
     def __init__(self, ir_engine, passage_max_len, query_max_len, tokenizer,
@@ -19,17 +21,17 @@ class rerank:
         passage = self.searcher.doc(doc_id).raw()
 
         q_tok = self.tokenizer.convert_tokens_to_ids(
-                self.tokenizer.tokenize('[CLS]' + self.query + '[SEP]'))
+            self.tokenizer.tokenize('[CLS]' + self.query + '[SEP]'))
 
         p_tok = self.tokenizer.convert_tokens_to_ids(
             self.tokenizer.tokenize(passage + '[SEP]'))
 
         # Check the limitation on query and passage
         if len(q_tok) > self.query_max_len:
-            q_tok = [q_tok[0]] + q_tok[1: self.query_max_len-2] + \
+            q_tok = [q_tok[0]] + q_tok[1: self.query_max_len - 2] + \
                     [q_tok[-1]]
         if len(p_tok) > self.passage_max_len:
-            p_tok = p_tok[:self.passage_max_len-1] + [p_tok[-1]]
+            p_tok = p_tok[:self.passage_max_len - 1] + [p_tok[-1]]
 
         s_p_id = [1] * len(p_tok)
         s_q_id = [0] * len(q_tok)
@@ -52,7 +54,7 @@ class rerank:
 
     def rerank(self, query, doc_list):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        assert isinstance(doc_list, list)  #  expects doc list as input
+        assert isinstance(doc_list, list)  # expects doc list as input
         self.query = query
         self.list_of_files = doc_list
         seq = []
@@ -61,17 +63,20 @@ class rerank:
 
         for i in self.list_of_files:
             f_list = self._query_passage_rerank(i)
+            # print(self.tokenizer.decode(f_list[0]))
             tok_id.append(f_list[0])
             seq.append(f_list[1])
 
         with torch.no_grad():
             score = self.model(torch.stack(tok_id, dim=0).to(device),
-                               torch.stack(seq,dim=0).to(device))
+                               torch.stack(seq, dim=0).to(device))
 
         # Sort the array based on the classfication score and collecting the
         # index so that we can rerank
         nt = score.logits.cpu()
-        y = np.argsort(nt.detach().numpy().ravel()[::2])
+        final_tensor = nt.detach().numpy().ravel()[::2]
+        y = np.argsort(final_tensor)[::-1]
         if self.verbose:
-            print("New sequence is {}".format(np.array(self.list_of_files)[y]))
+            print("New sequence is {} \n {}".format(np.array(
+                self.list_of_files)[y], self.list_of_files))
         return list(np.array(self.list_of_files)[y])

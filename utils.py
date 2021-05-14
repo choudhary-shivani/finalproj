@@ -8,11 +8,12 @@ stop_words = stopwords.words('english')
 stop_words.append('would')
 
 
-def preprocess_utterance(utterance, remove_stopwords=False):
+def preprocess_utterance(utterance, remove_stopwords=False, lower=True):
     """
     Preprocess a single utterance in CAST data.
     """
-    utterance = utterance.lower()
+    if lower:
+        utterance = utterance.lower()
     ret = utterance.translate(str.maketrans('', '', string.punctuation))
 
     if remove_stopwords:

@@ -26,14 +26,14 @@ config = {
     'cardinality': 10,
     'verbose': True,
     'hqe': {
-        'qt_thresh': 4,
+        'qt_thresh': 3,
         'st_thresh': 3,
-        'q_thresh': 16,
+        'q_thresh': 12,
         'last_k': 3,
         'use_orig_for_query': True
     },
     'pqe': {
-        'top_k_documents': 100,
+        'top_k_documents': 10,
         'top_k_tokens': 5,
     },
     'ranker':
@@ -56,6 +56,7 @@ class Pipeline(object):
         self.model = None
         self.ranker_pipeline = None
         self.prepare_pipeline(cfg)
+        self.query_dict = {}
 
     def prepare_pipeline(self, cfg):
 
@@ -69,7 +70,7 @@ class Pipeline(object):
         with open(tfidf_loc, 'rb') as f:
             self.idf = cpickle.load(f)
         gc.enable()
-        print ("Loading completed in {} sec.".format(time.time() - start))
+        print("Loading completed in {} sec.".format(time.time() - start))
         print(f'Loading BERT reranker and tokenizer')
         self.tokenizer = AutoTokenizer.from_pretrained(
             "amberoad/bert-multilingual-passage-reranking-msmarco")
@@ -111,24 +112,30 @@ class Pipeline(object):
         print('Pipeline load completed.')
 
     def query_expansion(self, utterances):
+
         if len(self.expansion_pipeline) == 0:
             return utterances
 
         expanded_queries = utterances
+        # change the expanded_queries[idx] to utterace[idx] if you want to
+        # run just on PQE terms. Leave at it is if you want to run on the
+        # both sets
         for module in self.expansion_pipeline:
             extension_sets = module.expand_queries(expanded_queries)
             expanded_queries = [
-                utterances[idx] + " " + " ".join(extension_sets[idx])
+                expanded_queries[idx] + " " + " ".join(extension_sets[idx])
                 for idx in range(len(utterances))
             ]
-
+            self.query_dict[module] = expanded_queries
+        with open('post_eval.txt', 'a') as f:
+            f.write("{} {} {}".format(utterances, '\n\n\n', self.query_dict))
         return expanded_queries
 
     def query_execution(self, utterances):
         results = []
 
         for query in utterances:
-            hits = self.backend_engine.search(query, k=20)
+            hits = self.backend_engine.search(query, k=25)
             results.append(
                 [hit.docid for hit in hits]
             )
@@ -142,24 +149,45 @@ class Pipeline(object):
 
     def execute(self, utterances):
         queries = self.query_expansion(utterances)
+        # print(utterances, '\n\n\n', queries)
         results = self.query_execution(queries)
-        reranked = self.passage_reranker(queries, results)
+        reranked = self.passage_reranker(queries,
+                                         results)
+        # self.query_dict[
+        #     list(self.query_dict.keys())[0]]
         return results, reranked
 
 
 if __name__ == '__main__':
     pipeline = Pipeline(config)
     train_utterances = read_topics_as_utterances(training_topics)
-    for idx, utter in enumerate(train_utterances[:2]):
+    with open('run.txt', 'w') as f:
+        f.write('')
+    with open('rerankrun.txt', 'w') as f:
+        f.write('')
+    for idx, utter in enumerate(train_utterances[:1]):
         res, rerank = pipeline.execute(utter)
         # write the result in the final file
         # First write the output of the PQE and HQE
-        number = str(idx+1)
-        with open('run.txt', 'w') as f:
+        number = str(idx + 1)
+        with open('run.txt', 'a') as f:
             for idx, rec in enumerate(res):
+                score = 10
                 for idx_, i in enumerate(rec):
                     f.write(
-                        "{} {} {} {} {} {}\n".format(number + '_' + str(idx + 1),
-                                                     'Q0', i, idx_ + 1, 10,
-                                                     'Automatic_run'))
+                        "{} {} {} {} {} {}\n".format(
+                            number + '_' + str(idx + 1),
+                            'Q0', i, idx_ + 1, score,
+                            'Automatic_run'))
+                    score *= 0.95
+        with open('rerankrun.txt', 'a') as f:
+            for idx, rec in enumerate(rerank):
+                score = 10
+                for idx_, i in enumerate(rec):
+                    f.write(
+                        "{} {} {} {} {} {}\n".format(
+                            number + '_' + str(idx + 1),
+                            'Q0', i, idx_ + 1, score,
+                            'Automatic_rerank_run'))
+                    score *= 0.95
         # print("Non-reranked {}\nReranked output {}".format(res, rerank))

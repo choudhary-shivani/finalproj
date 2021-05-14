@@ -3,7 +3,7 @@
 # For each token we then check BM25 retrieval score corresponding to most relevant document corresponding to the token.
 # This BM25 score is obtained form pyserini and prebuilt CAST index.
 # Finally, a turn ambiguity score is computed. If ambiguity is higher than a certain thershold, HQE is done.
-
+from copy import deepcopy
 from utils import preprocess_utterance
 
 
@@ -32,7 +32,9 @@ class HQE(object):
         :return expanded_sets: [str] an expanded query set
         """
         expanded_sets = []
-        proc_uttrs = [preprocess_utterance(ctx, remove_stopwords=True) for ctx in utterances]
+        proc_uttrs = [preprocess_utterance(ctx, remove_stopwords=True,
+                                           lower=True
+                                           ) for ctx in utterances]
 
         # Seperate expansion tokens at Query and Session Level. Does not make a difference if we use same thresholds.
         W_Q = [set() for _ in range(self.last_k)]
@@ -40,8 +42,13 @@ class HQE(object):
 
         for uid, uttr in enumerate(proc_uttrs):
             tokens = uttr.split()
-            
+            # temp = []
+            # for token_ in tokens:
+            #     if all([i.isalpha() for i in token_]) and len(token_) > 2:
+            #         temp.append(token_)
+            # tokens = temp
             # This means we are causing trouble in preprocessing. Removing stopwords may not be a good idea.
+            # print(uttr, tokens)
             assert len(tokens) != 0
 
             # Update token selections based on the BM25 score
@@ -81,14 +88,16 @@ class HQE(object):
             else:
                 match_score = results[0].score
 
-            extension_set = W_S
+            extension_set = deepcopy(W_S)
 
             if match_score < self.q_thresh:
                 # Ambiguious results. Add context from last k queries.
                 query_set = set().union(*W_Q)
                 extension_set = extension_set.union(query_set)
-
+            # print(extension_set)
             expanded_sets.append(extension_set)
+            # print(expanded_sets)
+            # print ("--------------------------")
             W_Q[uid % self.last_k] = q_set
 
         return expanded_sets
