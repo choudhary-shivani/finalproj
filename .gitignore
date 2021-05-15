@@ -2,3 +2,6 @@
 Untitled.*
 .idea/
 __pycache__/
+*.ipynb
+*.txt
+*.zip

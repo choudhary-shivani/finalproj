@@ -6,11 +6,15 @@ from time import time
 from collections import Counter
 import string, joblib, unicodedata
 
+import re
 import nltk
 from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer
+
 stop_words = stopwords.words('english')
 stop_words.append('would')
+lemmatizer = WordNetLemmatizer()
 
 # from trec_car import read_data
 
@@ -25,11 +29,14 @@ def text_processor(text):
     text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
 
     # Remove punctuations
-    text = text.translate(str.maketrans('', '', string.punctuation))
+    text = re.sub(r'[^\w\s]', ' ', text)
 
     # Remove stop words
+    tokens = filter(lambda x: x not in stop_words, text.split())
+
+    # Lemmatize
     text = " ".join(
-        filter(lambda x: x not in stop_words, text.split())
+        [lemmatizer.lemmatize(x) for x in tokens]
     )
 
     return text
@@ -99,7 +106,7 @@ def process_idf_counter(fname):
 if __name__ == '__main__':
     msmarco_loc = '/home/vsaley/Courses/TNLP/data/msmarco/collection.tsv'
     car_loc = '/home/vsaley/Courses/TNLP/data/CAR/paragraphCorpus/dedup.articles-paragraphs.cbor'
-    dest = '/home/vsaley/Courses/TNLP/data/idf_counter.pkl'
+    dest = '/home/vsaley/Courses/TNLP/data/idf_lemmatized_counter.pkl'
 
     # build_idf_counter(msmarco_loc, car_loc, dest)
     process_idf_counter(dest)

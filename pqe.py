@@ -13,8 +13,12 @@ from collections import Counter, defaultdict
 import spacy
 
 from tf_idf_vectorizer import text_processor as idf_processor
-from utils import preprocess_utterance as preprocess_utterance
+from nltk.stem import WordNetLemmatizer
 
+lemmatizer = WordNetLemmatizer()
+from utils import preprocess_utterance as preprocess_utterance
+MAX_DF=0.2
+MIN_DF=0.001
 
 class PQE(object):
     def __init__(self, ir_engine, idf, top_k_documents, top_k_tokens):
@@ -30,8 +34,8 @@ class PQE(object):
         
         self.nlp = spacy.load("en_core_web_sm")
         self.ignore_pronoun_list = [
-            'i', 'me', 'my', 'myself', 'you', 'your',
-            # 'why', 'who', 'when', 'where'
+            'i', 'me', 'my', 'myself', 'you', 'your'
+            'why', 'who', 'when', 'where', 'what'
         ]
 
     def classify_utterance(self, utterance):
@@ -41,7 +45,8 @@ class PQE(object):
         """
         doc = self.nlp(utterance)
         res = any([
-            (x.text not in self.ignore_pronoun_list) and (x.pos_ == 'PRON')
+            (x.text.lower() not in self.ignore_pronoun_list) and (x.pos_ ==
+                                                                'PRON')
             for x in doc
         ])
 
@@ -52,17 +57,21 @@ class PQE(object):
 
         for doc in documents:
             tokens = idf_processor(doc).split()
+            tokens = [lemmatizer.lemmatize(i) for i in tokens]
             tf = Counter(tokens)
 
             for tok in tf:
-                score = tf[tok] * self.idf.get(tok, 0)
-                if score > scores[tok]:
-                    scores[tok] = score
+                if len(tok) > 2 and all([i.isalpha() for i in tok]) and \
+                        (np.log(1 / MAX_DF) <  self.idf.get(tok, 0) < np.log(
+                            1/MIN_DF)):
+                    score = tf[tok] * self.idf.get(tok, 0)
+                    if score > scores[tok]:
+                        scores[tok] = score
 
         sorted_items = sorted(
             scores.items(), key=lambda x: x[1], reverse=True
         )[:self.top_k_tokens]
-
+        print(sorted_items)
         return set([x[0] for x in sorted_items])
 
     def expand_query(self, utterance):
@@ -71,7 +80,7 @@ class PQE(object):
         :return query: str expanded query 
         """
         if not self.classify_utterance(utterance):
-            return utterance
+            return utterance.split()
 
         # 1. Get top-k documents
         results = self.backend_engine.search(utterance, k=self.top_k_documents)
