@@ -2,6 +2,8 @@
 Untitled.*
 .idea/
 __pycache__/
-*.ipynb
 *.txt
 *.zip
+Anserini.ipynb
+Untitled1.ipynb
+Untitled.ipynb
