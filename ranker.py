@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+from torch.nn.functional import softmax
 
 torch.set_num_threads(os.cpu_count())
 
@@ -42,15 +43,20 @@ class rerank:
         if len(q_tok + p_tok) < 512:
             pad = ['[PAD]'] * (512 - len(q_tok + p_tok))
             pad_tok = self.tokenizer.convert_tokens_to_ids(pad)
-            seq_pad = [1] * (512 - len(q_tok + p_tok))
+            seq_pad = [1] * (512 - len(q_tok + p_tok ) )
             # print(q_tok + p_tok + pad_tok)
             t_q_tok = torch.tensor(q_tok + p_tok + pad_tok)
             seq_id_final = torch.tensor(s_q_id + s_p_id + seq_pad)
-            return t_q_tok, seq_id_final
+            attn_mask = torch.ByteTensor(([1] * (len(p_tok) + len(q_tok))) +
+                                         [0] *(512 - (len(p_tok) + len(q_tok))))
+            attention = torch.FloatTensor([1] * 512)
+            # print(attention.shape, attn_mask.shape, len(p_tok), len(q_tok))
+            attention.masked_fill_(attn_mask == 0, -np.inf)
+            return t_q_tok, seq_id_final, attention
 
         t_q_tok = torch.tensor(q_tok + p_tok)
         seq_id_final = torch.tensor(s_q_id + s_p_id)
-        return [t_q_tok, seq_id_final]
+        return t_q_tok, seq_id_final, torch.FloatTensor([1]*512)
 
     def rerank(self, query, doc_list):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -59,6 +65,7 @@ class rerank:
         self.list_of_files = doc_list
         seq = []
         tok_id = []
+        attention = []
         self.model = self.model.to(device)
 
         for i in self.list_of_files:
@@ -66,17 +73,22 @@ class rerank:
             # print(self.tokenizer.decode(f_list[0]))
             tok_id.append(f_list[0])
             seq.append(f_list[1])
+            attention.append(f_list[2])
 
         with torch.no_grad():
-            score = self.model(torch.stack(tok_id, dim=0).to(device),
-                               torch.stack(seq, dim=0).to(device))
+            score = self.model.forward(torch.stack(tok_id, dim=0).to(device),
+                               token_type_ids=torch.stack(seq, dim=0).to(
+                                   device),
+                               attention_mask=torch.stack(attention,
+                                                      dim=0).to(device))
 
         # Sort the array based on the classfication score and collecting the
         # index so that we can rerank
-        nt = score.logits.cpu()
-        final_tensor = nt.detach().numpy().ravel()[::2]
+        new_val = softmax(score.logits, dim=1)
+        nt = new_val.cpu()
+        final_tensor = nt.detach().numpy().ravel()[1::2]
         y = np.argsort(final_tensor)[::-1]
-        if self.verbose:
-            print("New sequence is {} \n {}".format(np.array(
-                self.list_of_files)[y], self.list_of_files))
+        # if self.verbose:
+        #     print("New sequence is {} \n {}".format(np.array(
+        #         self.list_of_files)[y], self.list_of_files))
         return list(np.array(self.list_of_files)[y])

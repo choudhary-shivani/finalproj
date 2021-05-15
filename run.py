@@ -11,11 +11,12 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from hqe import HQE
 from pqe import PQE
 from ranker import rerank
+from utils import preprocess_utterance
 
 os.environ["JAVA_HOME"] = "/usr/lib/jvm/java-11-openjdk-amd64"
 cast_index_loc = '/home/shivani/Downloads/index-cast2019.tar.gz/index-cast2019'
 cast_data_loc = './treccastweb/2020/2020_automatic_evaluation_topics_v1.0.json'
-tfidf_loc = '/home/shivani/Downloads/idf_counter.pkl'
+tfidf_loc = '/home/shivani/Downloads/idf_lemmatized_counter.pkl'
 
 # Data Related
 training_topics = './treccastweb/2019/data/training/train_topics_v1.0.json'
@@ -34,7 +35,7 @@ config = {
     },
     'pqe': {
         'top_k_documents': 10,
-        'top_k_tokens': 5,
+        'top_k_tokens': 3,
     },
     'ranker':
         {
@@ -126,7 +127,7 @@ class Pipeline(object):
                 expanded_queries[idx] + " " + " ".join(extension_sets[idx])
                 for idx in range(len(utterances))
             ]
-            self.query_dict[module] = expanded_queries
+            self.query_dict[module] = extension_sets
         with open('post_eval.txt', 'a') as f:
             f.write("{} {} {}".format(utterances, '\n\n\n', self.query_dict))
         return expanded_queries
@@ -135,7 +136,7 @@ class Pipeline(object):
         results = []
 
         for query in utterances:
-            hits = self.backend_engine.search(query, k=25)
+            hits = self.backend_engine.search(query, k=20)
             results.append(
                 [hit.docid for hit in hits]
             )
@@ -144,17 +145,18 @@ class Pipeline(object):
     def passage_reranker(self, utterances, results):
         reranked_output = []
         for query, result in zip(utterances, results):
+            # query = ' '.join(set(query.split()))
+            print(query)
             reranked_output.append(self.ranker_pipeline.rerank(query, result))
         return reranked_output
 
     def execute(self, utterances):
         queries = self.query_expansion(utterances)
-        # print(utterances, '\n\n\n', queries)
+        # print(queries)
         results = self.query_execution(queries)
         reranked = self.passage_reranker(queries,
                                          results)
-        # self.query_dict[
-        #     list(self.query_dict.keys())[0]]
+
         return results, reranked
 
 
@@ -165,7 +167,7 @@ if __name__ == '__main__':
         f.write('')
     with open('rerankrun.txt', 'w') as f:
         f.write('')
-    for idx, utter in enumerate(train_utterances[:1]):
+    for idx, utter in enumerate(train_utterances[21:]):
         res, rerank = pipeline.execute(utter)
         # write the result in the final file
         # First write the output of the PQE and HQE
